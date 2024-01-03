@@ -1,0 +1,45 @@
+  postgres:
+    image: postgres:14-alpine
+    environment:
+      - POSTGRES_LOGGING=true
+      - POSTGRES_DB_FILE=/run/secrets/postgres_db
+      - POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password
+      - POSTGRES_USER_FILE=/run/secrets/postgres_user
+    secrets:
+      - postgres_password
+      - postgres_user
+      - postgres_db
+    ports:
+      - ${POSTGRES_PORT:-5432}:5432
+    volumes:
+      - blockfrost-postgres:/var/lib/postgresql/data
+    restart: on-failure
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: ${POSTGRES_ARGS:--c maintenance_work_mem=1GB -c max_parallel_maintenance_workers=4}
+    logging:
+      driver: "json-file"
+
+  cardano-db-sync:
+    image: inputoutput/cardano-db-sync:${CARDANO_DB_SYNC_VERSION:-latest}
+    environment:
+      - DISABLE_LEDGER=${DISABLE_LEDGER}
+      - NETWORK=${NETWORK:-mainnet}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - RESTORE_SNAPSHOT=${RESTORE_SNAPSHOT:-}
+      - RESTORE_RECREATE_DB=N
+      - EXTRA_DB_SYNC_ARGS=${EXTRA_DB_SYNC_ARGS:-}
+    secrets:
+      - postgres_password
+      - postgres_user
+      - postgres_db
+    volumes:
+      - cardano-db-sync-data:/var/lib/cexplorer
+      - cardano-node-ipc:/node-ipc
+    restart: on-failure
+    logging:
+      driver: "json-file"

@@ -1,0 +1,33 @@
+version: "3.9"
+
+volumes:
+  cardano-node-db:
+  cardano-node-ipc:
+  cardano-db-sync-data:
+  blockfrost-postgres:
+
+secrets:
+  postgres_db:
+    file: ./config/secrets/postgres_db
+  postgres_password:
+    file: ./config/secrets/postgres_password
+  postgres_user:
+    file: ./config/secrets/postgres_user
+
+services:
+  cardano-node:
+    image: inputoutput/cardano-node:${CARDANO_NODE_VERSION:-latest}
+    environment:
+      - NETWORK=${NETWORK:-mainnet}
+      - CARDANO_NODE_SOCKET_PATH=/ipc/node.socket
+    volumes:
+      - cardano-node-db:/data/db
+      - cardano-node-ipc:/ipc
+    logging:
+      driver: "json-file"
+    restart: on-failure
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f 127.0.0.1:12788 || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3

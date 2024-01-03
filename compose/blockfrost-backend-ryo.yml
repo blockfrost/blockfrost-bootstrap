@@ -1,0 +1,26 @@
+  blockfrost-backend-ryo:
+    image: blockfrost/backend-ryo:${BLOCKFROST_BACKEND_VERSION:-latest}
+    environment:
+      - BLOCKFROST_CONFIG_NETWORK=${NETWORK:-mainnet}
+      - BLOCKFROST_CONFIG_SERVER_LISTEN_ADDRESS=0.0.0.0
+      - BLOCKFROST_CONFIG_SERVER_PORT=${BLOCKFROST_CONFIG_SERVER_PORT:-3000}
+      - BLOCKFROST_CONFIG_SERVER_DEBUG=${BLOCKFROST_CONFIG_SERVER_DEBUG:-true}
+      - BLOCKFROST_CONFIG_DBSYNC_HOST=postgres
+      - BLOCKFROST_CONFIG_DBSYNC_USER=postgres
+      - BLOCKFROST_CONFIG_DBSYNC_DATABASE=cexplorer
+      - BLOCKFROST_CONFIG_DBSYNC_PASSWORD=REGENERATEME
+      - BLOCKFROST_CONFIG_TOKEN_REGISTRY_URL=https://tokens.cardano.org
+    logging:
+      driver: "json-file"
+    restart: on-failure
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f 0.0.0.0:3000/blocks/latest || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - ${BLOCKFROST_CONFIG_SERVER_PORT:-3000}:${BLOCKFROST_CONFIG_SERVER_PORT:-3000}
+    secrets:
+      - postgres_password
+      - postgres_user
+      - postgres_db

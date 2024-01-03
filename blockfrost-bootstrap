@@ -1,0 +1,182 @@
+#!/usr/bin/env bash
+
+if ! command -v docker &> /dev/null
+then
+    echo "ERROR: docker could not be found, please install it."
+    echo "Visit https://docs.docker.com/get-docker/ for more information."
+    exit 1
+fi
+
+if ! command -v docker-compose &> /dev/null
+then
+    echo "ERROR: docker-compose could not be found, please install it."
+    echo "Visit https://docs.docker.com/compose/install/ for more information."
+    exit 1
+fi
+
+init () {
+  if [ -f ./docker-compose.yml ]; then
+    echo "ERROR: ☝  Your cluster is already initialized."
+    echo "Run \"$0 status\" or \"$0 destroy\"."
+    echo
+    exit 1
+  fi
+
+    clear
+    echo -e "\e[1m"
+    echo "    Welcome to Blockfrost bootstrap!"
+    echo -e "\e[0m"
+    echo "We're going to initialize a new Blockfrost Bootstrap cluster for you."
+    echo
+    echo "🯄 But first - which network are you looking for?"
+    select network in "mainnet" "preview" "preprod"; do
+	    case $network in
+	      mainnet ) export NETWORK=mainnet;break;;
+	      preview ) export NETWORK=preview;break;;
+	      preprod ) export NETWORK=preprod;break;;
+	    esac
+    done
+    echo "NETWORK=$NETWORK" > .env
+    echo
+    echo "The blockfrost cluster consists of the Cardano blockchain node, the Cardano DB Sync,"
+    echo "PostgreSQL database and the Blockfrost backend, but there are"
+    echo "other components that you might find useful. Please refer to the documentation"
+    echo -e "available at \e[33mhttp://github.com/blockfrost/blockfrost-bootstrap\e[39m to find out more about"
+    echo "each of these components."
+    echo
+    echo "🯄 Do you wish to initialize the Cardano Submit API?"
+    select yn1 in "Yes" "No"; do
+        case $yn1 in
+            Yes ) export INIT_SUBMIT_API=true;break;;
+            No ) export INIT_SUBMIT_API=false;break;;
+            * ) echo "Invalid choice.";
+        esac
+    done
+    echo
+    echo "🯄 Do you wish to initialize Ogmios?"
+    select yn2 in "Yes" "No"; do
+        case $yn2 in
+            Yes ) export INIT_OGMIOS=true;break;;
+            No ) export INIT_OGMIOS=false;break;;
+            * ) echo "Invalid choice.";
+        esac
+    done
+    cat compose/common.yml compose/cardano-db-sync.yml compose/blockfrost-backend-ryo.yml > docker-compose.yml
+    if $INIT_SUBMIT_API; then cat compose/cardano-submit-api.yml >> docker-compose.yml; fi;
+    if $INIT_OGMIOS; then cat compose/ogmios.yml >> docker-compose.yml; fi;
+    echo >> docker-compose.yml
+    echo "# Generated on $(date) by blockfrost-bootstrap" >> docker-compose.yml
+    echo
+
+    echo "Congratulations! Your cluster has been initialized. Pick up"
+    echo "a good book, brew some coffee, this might take some time."
+    echo
+    echo "Press Enter to Continue."
+    read  -n 1
+    docker-compose up -d --remove-orphans
+    echo
+    echo
+    echo "All is done now. It might take some time to sync. Execute $0 height to see the progress."
+}
+
+start () {
+  docker-compose start
+}
+
+stop () {
+  docker-compose stop
+}
+
+status () {
+  DOCKER_COMPOSE_PS=$(docker ps -a --format 'table {{.Names}}\t{{.ID}}\t{{.Status}}\t{{.Ports}}');
+  echo "$DOCKER_COMPOSE_PS" | grep -E 'blockfrost|NAME'
+  echo
+
+}
+
+height () {
+  source .env && declare -A net_map; net_map=( ["mainnet"]="--mainnet" ["preview"]="--testnet-magic 2" ["preprod"]="--testnet-magic 1" ); export MAGIC=${net_map[${NETWORK:-mainnet}]}
+  NODE_HEIGHT=$(docker exec -t $(docker ps --format '{{.Names}}' | grep blockfrost | grep 'cardano-node' | head -n 1) /bin/cardano-cli query tip $MAGIC | jq -r .block)
+  DBSYNC_HEIGHT=$(docker exec $(docker ps --format '{{.Names}}' | grep blockfrost | grep 'postgres' | head -n 1) psql -qtA -U postgres cexplorer -c 'select block_no from block order by id desc limit 1;')
+  BLOCKFROST_HEIGHT=$(curl -s localhost:3000/blocks/latest | jq -r .height)
+  echo -e "\e[1mCurrent blockchain heights\e[0m"
+  echo
+  echo "Cardano node:          $NODE_HEIGHT"
+  echo "Cardano DB Sync:       $DBSYNC_HEIGHT"
+  echo "Blockfrost backend:    $BLOCKFROST_HEIGHT"
+  echo
+  [ $(($NODE_HEIGHT > $DBSYNC_HEIGHT ? $NODE_HEIGHT - $DBSYNC_HEIGHT : $DBSYNC_HEIGHT - $NODE_HEIGHT)) -ge 10 -o $(($NODE_HEIGHT > $BLOCKFROST_HEIGHT ? $NODE_HEIGHT - $BLOCKFROST_HEIGHT : $BLOCKFROST_HEIGHT - $NODE_HEIGHT)) -ge 10 -o $(($DBSYNC_HEIGHT > $BLOCKFROST_HEIGHT ? $DBSYNC_HEIGHT - $BLOCKFROST_HEIGHT : $BLOCKFROST_HEIGHT - $DBSYNC_HEIGHT)) -ge 10 ] && echo -e "\e[31mYour cluster is out of sync, by more than 10 blocks.\e[0m" || echo -e "\e[32mYour cluster appears in sync.\e[0m"
+}
+
+destroy () {
+
+    if [ ! -f ./docker-compose.yml ]; then
+    echo "Could not find an existing configuration."
+    echo "Run \"$0 init\" to create a new cluster."
+    echo
+    exit 1
+    fi
+    echo "Here be dragons!"
+    echo
+    echo "Do you REALLY want to DESTROY your current cluster?"
+    select yn1 in "Yes" "No"; do
+        case $yn1 in
+            Yes ) break;;
+            No ) exit;;
+            * ) echo "Invalid choice.";
+        esac
+    done
+    echo
+    docker-compose rm -s
+    rm docker-compose.yml
+    echo
+    DANGLING_VOLUMES=$(docker volume ls --format '{{.Name}}'|grep blockfrost)
+    echo
+    echo "The following volumes have been left after the cluster:"
+    echo
+    echo "$DANGLING_VOLUMES"
+    echo
+    echo "Do you REALLY want to DESTROY your current cluster volumes? You will lose all data."
+    select yn1 in "Yes" "No"; do
+        case $yn1 in
+            Yes ) break;;
+            No ) exit;;
+            * ) echo "Invalid choice.";
+        esac
+    done
+    echo
+    echo "$DANGLING_VOLUMES" | xargs -r docker volume rm
+    echo "All gone."
+}
+
+case "$1" in
+        init)
+            init
+            ;;
+
+        start)
+            start
+            ;;
+        stop)
+           stop
+           ;;
+        status)
+            status
+            ;;
+	height)
+	    height
+	    ;;
+        destroy)
+            destroy
+            ;;
+        *)
+            echo "Usage: $0 {init|start|stop|status|height|destroy}"
+            echo
+            echo "    init      Initialize an blockfrost bootstrap cluster"
+            echo "    start     Start the cluster"
+            echo "    stop      Stop the cluster"
+            echo "    status    Get status of an initialized cluster"
+	    echo "    height    Get current height of the cluster"
+            echo "    destroy   Destroy the current cluster"
+            exit 1
+esac
