@@ -66,6 +66,31 @@ Stopping blockfrost-bootstrap_cardano-node_1           ... done
 $
 ```
 
+### Query Blockfrost
+
+```bash
+$ curl http://localhost:3000/blocks/latest | jq
+{
+  "time": 1704646432,
+  "height": 1789685,
+  "hash": "8b71facfbdf47f11f1dddd514eb20dd46d92417be9be5cbbf9d5ab7ea1d22826",
+  "slot": 48963232,
+  "epoch": 117,
+  "epoch_slot": 60832,
+  "slot_leader": "pool1upqfyzqpk6wkpsvw90qqrpr9tjyemh484wk4em69anwpu586ehq",
+  "size": 4,
+  "tx_count": 0,
+  "output": null,
+  "fees": null,
+  "block_vrf": "vrf_vk1suxu5crrj7u96tjwu8jxhkum0p9qj2s7cfwts9rv7szxg4hlscwqg9ljpt",
+  "op_cert": "ada64e38de0a5e795b69bcb6b2598142983ef36d348d36f0a0541362811e4eb0",
+  "op_cert_counter": "5",
+  "previous_block": "cdaefafd740d041fc89e8392f8397ff88c3d3053d236c7b3200f7b164d4344e5",
+  "next_block": null,
+  "confirmations": 0
+}
+```
+
 ### Status of the cluster
 
 You can view the current status of your cluster using the `status` command.
